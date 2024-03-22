@@ -4,6 +4,17 @@ This utility, `checker.py`, is designed to check the equivalence of circuits bas
 If the Worst-Absolute Error (WAE) between the two circuits is larger than the set ET, it will trigger the "ET breached! ERROR!!!" message.
 Otherwise, it will print "PASS"
 
+## Prerequisits
+
+- Install the following tools:
+
+1. **Linux**
+2. **Yosys**: link (https://github.com/YosysHQ/yosys)
+3. **Icarus Verilog**: link (https://github.com/steveicarus/iverilog)
+
+**Note: add the binaries of 2 and 3 to your PATH**
+
+
 ## Folder Structure
 - `./input/`: contains the input circuits to the tool. 
 - `./input/exact/`: contains the exact circuits of our benchmark suite
