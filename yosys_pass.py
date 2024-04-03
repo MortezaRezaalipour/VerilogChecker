@@ -2,11 +2,45 @@ import os
 import re
 import subprocess
 from typing import Dict, List
+from tempfile import mkstemp
+from shutil import move, copymode
 
 from checker import extract_inputs_outputs, extract_module_signature
 
 
+
+def fix_module_name(input_path: str):
+    file = input_path.split('/')[-1]
+    subst = file[:file.rfind('.')]  # get pure name
+    fh, abs_path = mkstemp()
+    with os.fdopen(fh, 'w') as new_file:
+        with open(input_path) as old_file:
+            for line in old_file:
+                if 'module' in line and 'endmodule' not in line:
+
+                    # This pattern divides the module declaration into three parts.
+                    # for example: it divides this: module \nulls9-ko23iou09vn2adder(pi0, pi1, pi2, pi3, po0, po1, po2);\n
+                    # into this:
+                    # match.group(1) <= 'module '
+                    # match.group(2) <= '\nulls9-ko23iou09vn2adder'
+                    # match.group(1) <= '(pi0, pi1, pi2, pi3, po0, po1, po2);\n'
+                    pattern = '(module )([^\(]+)(\(.*\);)'
+                    match = re.search(pattern, line)
+                    second = match.group(2)
+                    new_file.write(line.replace(second, subst))
+                else:
+                    new_file.write(line)
+    copymode(input_path, abs_path)
+    os.remove(input_path)
+    move(abs_path, input_path)
+
+
+
 def synthesize_to_gate_level(input_path: str, output_path: str):
+
+    fix_module_name(input_path)
+
+
     yosys_command = f"""
     read_verilog {input_path};
     synth -flatten;
