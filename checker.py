@@ -4,7 +4,7 @@ import subprocess
 import re
 import random
 import argparse
-from typing import List, Dict
+from typing import List, Dict, Callable, Literal
 from collections import OrderedDict
 from yosys_pass import *
 
@@ -26,6 +26,33 @@ class Arguments:
         self.__input_port_orders = tmp_args.input_port_orders
         self.__output_port_orders = tmp_args.output_port_orders
         self.__et = tmp_args.error_threshold
+        if tmp_args.metric_type == 'wae':
+            self.__metric_type = wae
+        elif tmp_args.metric_type == 'med':
+            self.__metric_type = med
+        elif tmp_args.metric_type == 'msed':
+            self.__metric_type = msed
+        elif tmp_args.metric_type == 'er':
+            self.__metric_type = er
+        elif tmp_args.metric_type == 'mred':
+            self.__metric_type = mred
+
+        self.__check = bool(tmp_args.check)
+        self.__evaluate = bool(tmp_args.evaluate)
+
+
+
+    @property
+    def check(self):
+        return self.__check
+
+    @property
+    def evaluate(self):
+        return self.__evaluate
+
+    @property
+    def metric_type(self):
+        return self.__metric_type
 
     @property
     def et(self):
@@ -54,10 +81,14 @@ class Arguments:
                                default=['1', '1'])
         my_parser.add_argument('--output_port_orders', '-opo', help='port-order(s)', action=CustomAction, choices=['11', '12', '21', '22'] , type=str,
                                default=['1', '1'])
-        my_parser.add_argument('--error_threshold', '-et', help='error-threshold', type=int, default=-1)
-
+        my_parser.add_argument('--error_threshold', '-et', help='error-threshold', type=float, default=-1)
+        metrics = ['wae', 'med', 'msed', 'er', 'mred']
+        my_parser.add_argument('--metric_type', '-t', help='metric-type', type=str, choices=metrics, default='wae')
+        my_parser.add_argument('--check', action="store_true", help='check-weather-it-adheres-to-et')
+        my_parser.add_argument('--evaluate', action="store_true", help='evaluate-the-metric-passed')
         tmp_args = my_parser.parse_args()
-        # print(f'{tmp_args = }')
+
+
         return Arguments(tmp_args)
 
     def __repr__(self):
@@ -65,7 +96,11 @@ class Arguments:
                f'{self.circuits = }\n' \
                f'{self.input_port_orders = }\n' \
                f'{self.output_port_orders = }\n' \
+               f'{self.metric_type = }\n' \
+               f'{self.check = }\n' \
+               f'{self.evaluate = }\n' \
                f'{self.et = }\n'
+
 
 
 class Circuit:
@@ -82,6 +117,11 @@ class Circuit:
         self.input_order = None
         self.output_order = None
         self.testbench_path = None
+        self.results_path = None
+        self.simulation_pattern = None
+        self.simulation_output = None
+
+
 
 
 def main():
@@ -135,7 +175,28 @@ def main():
     with open(circuit2.synth_path, 'r') as f2:
         circuit2.synth_ver_str = f2.readlines()
 
-    verifier(circuit1, circuit2, args.et)
+    samples = generate_samples(circuit1.input_count)
+    circuit1.simulation_pattern = samples
+    circuit2.simulation_pattern = samples
+
+    assert circuit1.simulation_pattern == circuit2.simulation_pattern, "simulation patterns are not the same"
+
+    simulate(circuit1)
+    import_results(circuit1)
+    simulate(circuit2)
+    import_results(circuit2)
+
+    # Now the circuit objects are filled and ready for equivalence check or evaluation
+    if args.check:
+        if check(circuit1, circuit2, args):
+            print(f'Check -> PASSED!')
+        else:
+            print(f'Error Breached!!!')
+    elif args.evaluate:
+        error = evaluate(circuit1, circuit2, args)
+        print(f'{error = }')
+    else:
+        AssertionError('Both check and evaluate flags are False! at least one should be True!')
 
 
 
@@ -145,80 +206,154 @@ def export_testbench(output_path: str, testbench: str):
         t.writelines(testbench)
 
 
-def verifier(circuit1: Circuit, circuit2: Circuit, et:int = -1):
+def import_results(circuit: Circuit):
+    # temp_results: List[int] = []
+    with open(circuit.results_path, 'r') as r1:
+        temp_results = r1.readlines()
+    # for line_idx in range(len(temp_results_file)):
+    #     temp_results.append(int(temp_results_file[line_idx].strip().strip("\n"), base=2))
+    circuit.simulation_output = temp_results
 
 
 
-    # generate samples
-
-
-
-    samples = generate_samples(circuit1.input_count)
-
-    testbench1 = create_testbench(circuit1, samples)
-    testbench2 = create_testbench(circuit2, samples)
-
-    # export testbenches
-
-
-
-    export_testbench(circuit1.testbench_path, testbench1)
-    export_testbench(circuit2.testbench_path, testbench2)
-
+def simulate(circuit: Circuit):
+    # create testbench
+    testbench = create_testbench(circuit, circuit.simulation_pattern)
+    # export testbench
+    export_testbench(circuit.testbench_path, testbench)
     # run testbenches
-    result1_path = f'temp/{circuit1.name}.txt'
-    result2_path = f'temp/{circuit2.name}.txt'
-
-    run_testbench(circuit1.testbench_path, circuit1.synth_path, result1_path)
-    run_testbench(circuit2.testbench_path, circuit2.synth_path, result2_path)
-
-    compare_results(result1_path, result2_path, et)
+    result_path = f'temp/{circuit.name}.txt'
+    circuit.results_path = result_path
+    run_testbench(circuit.testbench_path, circuit.synth_path, circuit.results_path)
 
 
 
-def compare_results(result1_path, result2_path, et:int=-1):
-    with open(result1_path, 'r') as r1:
-        result1 = r1.readlines()
-    with open(result2_path, 'r') as r2:
-        result2 = r2.readlines()
-    assert len(result1) == len(result2)
+def check(circuit1: Circuit, circuit2: Circuit, args: Arguments) -> bool:
+    error = args.metric_type(circuit1.simulation_output, circuit2.simulation_output)
+    if error > args.et:
+        return  False
+    else:
+        return True
 
-    if et == -1:
-        if re.search('[wce | et | wc](\d+)', result1_path):
-            et = int(re.search('[wce | et | wc](\d+)', result1_path).group(1))
-        elif re.search('[wce | et | wc](\d+)', result2_path):
-            et = int(re.search('[wce | et | wc](\d+)', result2_path).group(1))
-        else:
-            print(f'Error! No error threshold is defined!')
-            exit()
 
-    wae = 0 
+
+def evaluate(circuit1: Circuit, circuit2: Circuit, args: Arguments) -> float:
+    error = args.metric_type(circuit1.simulation_output, circuit2.simulation_output)
+    return error
+
+
+def wae(result1: List[str], result2: List[str]) -> int:
+    """
+    takes in two sets of correspondant outputs and compare the Worst-Absolute Error (WAE) of them.
+    :param result1_path: the output bit-stream of the first circuit
+    :param result2_path: the output bit-stream of the second circuit
+    :return: the worst absolute error as an integer
+    """
+
+    assert len(result1) == len(result2) and len(
+        result1) != 0, f"the number of outputs is not equal or they are zero in length"
+    wae = 0
     for line_idx in range(len(result1)):
         # print(result1[line_idx].strip().strip("\n"))
-        
-        cur1 = int(result1[line_idx].strip().strip("\n"), base=2)
-        cur2 = int(result2[line_idx].strip().strip("\n"), base=2)
+
+        cur1 = abs(int(result1[line_idx].strip().strip("\n"), base=2))
+        cur2 = abs(int(result2[line_idx].strip().strip("\n"), base=2))
+
+        if wae < abs(cur1 - cur2):
+            wae = abs(cur1 - cur2)
+
+    return wae
+
+def med(result1: List[str], result2: List[str]) -> float:
+    """
+    takes in two sets of correspondant outputs and compare the Mean-Error Distance (MED) of them.
+    :param result1_path: the output bit-stream of the first circuit
+    :param result2_path: the output bit-stream of the second circuit
+    :return: the worst absolute error as an integer
+    """
+
+    assert len(result1) == len(result2) and len(
+        result1) != 0, f"the number of outputs is not equal or they are zero in length"
+    error_sum = 0
+    for line_idx in range(len(result1)):
 
 
+        cur1 = abs(int(result1[line_idx].strip().strip("\n"), base=2))
+        cur2 = abs(int(result2[line_idx].strip().strip("\n"), base=2))
+
+        error_sum += abs(cur1 - cur2)
 
 
-        
+    return float(error_sum / len(result1))
 
-        if abs(abs(cur1) - abs(cur2)) > et:
-            print(f'ET breached!')
-            input_width = re.search('i(\d+)', result1_path).group(1)
-            with open(f'report/{result1_path[5:-4]}_FAILED.txt', 'w') as f: # removing 'temp/' from head and '.txt' from its tail
-                f.writelines(f"{format(line_idx, f'0{input_width}b')}\n")
-                f.writelines(f"{result1_path[:-4]} = {cur1}\n")
-                f.writelines(f"{result2_path[:-4]} = {cur2}\n")
-                f.writelines(f"{abs(cur1)} - {abs(cur2)} > et={et}\n")
-            # exit()
-            print(f'ERROR!!!')
-            exit()
-            break
+def er(result1: List[str], result2: List[str]) -> float:
+    """
+    takes in two sets of correspondant outputs and compare the Error Rate (ER) of them.
+    :param result1_path: the output bit-stream of the first circuit
+    :param result2_path: the output bit-stream of the second circuit
+    :return: the worst absolute error as an integer
+    """
+    assert len(result1) == len(result2) and len(
+        result1) != 0, f"the number of outputs is not equal or they are zero in length"
+    unequal_count = 0
+    for line_idx in range(len(result1)):
+        # print(result1[line_idx].strip().strip("\n"))
 
-        wae = max(wae, abs(cur1 - cur2))
-    print(f'TEST -> OK')
+        cur1 = abs(int(result1[line_idx].strip().strip("\n"), base=2))
+        cur2 = abs(int(result2[line_idx].strip().strip("\n"), base=2))
+
+        if cur1 != cur2:
+            unequal_count += 1
+
+
+    return float((unequal_count / len(result1)) * 100) # to get the percentage
+
+def mred(result1: List[str], result2: List[str]) -> float:
+    """
+    takes in two sets of correspondant outputs and compare the Mean-Relative Error Distance (MRED) of them.
+    :param result1_path: the output bit-stream of the first circuit
+    :param result2_path: the output bit-stream of the second circuit
+    :return: the worst absolute error as an integer
+    """
+    assert len(result1) == len(result2) and len(
+        result1) != 0, f"the number of outputs is not equal or they are zero in length"
+    sum_relative_error = 0
+    uncounted = 0
+    for line_idx in range(len(result1)):
+        cur1 = abs(int(result1[line_idx].strip().strip("\n"), base=2))
+        cur2 = abs(int(result2[line_idx].strip().strip("\n"), base=2))
+
+
+        if cur1 != 0 and cur2 != 0:
+            sum_relative_error += abs(cur1 - cur2) / cur1
+        else:
+            uncounted += 1
+
+        print(f'{sum_relative_error= }')
+        print(f'{len(result1) = }')
+        print(f'{uncounted= }')
+    return float((sum_relative_error / (len(result1) - uncounted)) * 100)  # to get the percentage
+
+
+def msed(result1: List[str], result2: List[str]) -> float:
+    """
+    takes in two sets of correspondant outputs and compare the Mean-Squared Error Distance (MSED) of them.
+    :param result1_path: the output bit-stream of the first circuit
+    :param result2_path: the output bit-stream of the second circuit
+    :return: the worst absolute error as an integer
+    """
+    assert len(result1) == len(result2) and len(
+        result1) != 0, f"the number of outputs is not equal or they are zero in length"
+    error_sum_squared = 0
+    for line_idx in range(len(result1)):
+        # print(result1[line_idx].strip().strip("\n"))
+
+        cur1 = abs(int(result1[line_idx].strip().strip("\n"), base=2))
+        cur2 = abs(int(result2[line_idx].strip().strip("\n"), base=2))
+
+        error_sum_squared += abs(cur1 - cur2) * abs(cur1 - cur2)
+    return float(error_sum_squared / len(result1))
+
 
 
 def run_testbench(testbench_path: str, dut_path: str, result_path: str):
@@ -464,20 +599,6 @@ def reorder_string(s):
     return parts[0]+parts[1]
 
 
-
-# def compute_input_chunk_offset(this_dict: Dict, chunk_idx):
-#     chunk_offset = 0
-#
-#     for i in range(chunk_idx):
-#         chunk_offset += this_dict[i][1]
-#     return chunk_offset
-
-
-# def compute_output_chunk_offset(this_dict: Dict, chunk_idx, input_chunks):
-#     chunk_offset = 0
-#     for i in range(input_chunks, chunk_idx):
-#         chunk_offset += this_dict[i][1]
-#     return chunk_offset
 
 
 def get_num_inputs(input_dict: Dict) -> int:
