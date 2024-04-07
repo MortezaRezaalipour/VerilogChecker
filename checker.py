@@ -110,7 +110,7 @@ def main():
     circuit1.name = name1
     circuit2.name = name2
 
-    exit()
+
 
     circuit1.testbench_path = f'temp/{circuit1.name}_tb.v'
     circuit2.testbench_path = f'temp/{circuit2.name}_tb.v'
