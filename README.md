@@ -1,8 +1,11 @@
-# Equivalence Checker
+# Equivalence Checker and Difference Evaluator
 
-This utility, `checker.py`, is designed to check the equivalence of circuits based on the provided error threshold.
-If the Worst-Absolute Error (WAE) between the two circuits is larger than the set ET, it will trigger the "ET breached! ERROR!!!" message.
-Otherwise, it will print "PASS"
+This utility has two operating modes: 
+1. Equivalence Checking (enabled with the flag `--check`): designed to check the equivalence of two given circuits (in Verilog) based on the provided error threshold; if they are not equivalend, it will trigger an "ET beached!!!" message, otherwise, a "TEST -> PASS" is shown.
+2. Difference Evaluation (enabled with the flag `--evaluate`): designed to evaluate the error of a given circuit (in Verilog). The output is "error=[errorValue]"
+
+
+**Note: the error criteria can be computed based on different metrics such as Worst-Absolute Error, Mean Error Distance (MED), Mean-Squared Error Distance (MSED, Error Rate (ER), and Mean-Relative Error Distance (MRED)**
 
 ## Prerequisits
 
