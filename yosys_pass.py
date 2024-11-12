@@ -6,7 +6,9 @@ from tempfile import mkstemp
 from shutil import move, copymode
 
 from checker import extract_inputs_outputs, extract_module_signature
-
+from colorama import Fore, Style
+import colorama
+colorama.init(autoreset=True)
 
 
 def fix_module_name(input_path: str):
