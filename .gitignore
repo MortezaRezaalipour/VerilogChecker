@@ -4,6 +4,4 @@ __pycache__
 # Exclusions
 !input/
 !checker/
-!checker_blahBlah.py
-!yosys_pass.py
 !README.md
