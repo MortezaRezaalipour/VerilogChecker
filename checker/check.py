@@ -9,10 +9,10 @@ from colorama import Fore, Style
 import colorama
 colorama.init(autoreset=True)
 
-INPUT_ORDER_TYPE1 = '2'  # [n:0]a, [n:0]b => circuit(a0, a1, ..., an, b0, b1, ..., bn, [outputs])
+INPUT_ORDER_TYPE1 = '1'  # [n:0]a, [n:0]b => circuit(a0, a1, ..., an, b0, b1, ..., bn, [outputs])
 INPUT_ORDER_TYPE2 = '2'  # [n:0]a, [n:0]b => circuit(an, an-1, ..., a0, bn, bn-1, ..., b0, [outputs])
 
-OUTPUT_ORDER_TYPE1 = '2'  # [n:0]y, [n:0]z => circuit([inputs], y0, y1, ..., yn, z0, z1, ..., zn)
+OUTPUT_ORDER_TYPE1 = '1'  # [n:0]y, [n:0]z => circuit([inputs], y0, y1, ..., yn, z0, z1, ..., zn)
 OUTPUT_ORDER_TYPE2 = '2'  # [n:0]y, [n:0]z => circuit([inputs], yn, yn-1, ..., y0, zn, zn-1, ..., z0)
 
 class Checker:
@@ -34,10 +34,12 @@ class Checker:
         # Set paths and orders
         self.circuit1.path = exact_path
         self.circuit2.path = approx_path
-        self.circuit1.input_order = input_order
-        self.circuit2.input_order = input_order
-        self.circuit1.output_order = output_order
-        self.circuit2.output_order = output_order
+        self.circuit1.input_order = input_order[0]
+        self.circuit2.input_order = input_order[1]
+        self.circuit1.output_order = output_order[0]
+        self.circuit2.output_order = output_order[1]
+        print(f'{input_order}')
+        print(f'{output_order}')
         self.sample_count = sample_count if sample_count else 100
 
         self.metric = metric
@@ -99,7 +101,7 @@ class Checker:
         circuit.results_path = os.path.join(self.temp_dir, f'{circuit.name}.txt')
         self.run_testbench(circuit.testbench_path, circuit.synth_path, circuit.results_path)
 
-    def check(self) -> Union[bool, float]:
+    def check(self) -> Tuple[Union[None, float, int], bool]:
         """Runs simulation and either checks equivalence or evaluates the circuits."""
 
         samples = self.generate_samples(self.sample_count)
