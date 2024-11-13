@@ -1,0 +1,12 @@
+# Include all files in checker directory
+include checker/*.py
+
+# Include README and LICENSE
+include README.md
+include LICENSE
+
+# Exclude unnecessary files
+exclude temp/*
+exclude input/*
+exclude *.bak
+exclude __pycache__/*
