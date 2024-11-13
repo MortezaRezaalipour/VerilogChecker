@@ -10,25 +10,34 @@ def main():
     exact_verilog_path = sys.argv[1]
     approximate_verilog_path = sys.argv[2]
 
+    input_order = ["1", "1"]  # Example input order; adjust as needed
+    output_order = ["1", "1"]  # Example output order; adjust as needed
+    metric = "wae"  # Example metric
+    error_tolerance = 5  # Example error tolerance
+
     # Initialize the Checker with test parameters
     checker = Checker(
-        path1=exact_verilog_path,
-        path2=approximate_verilog_path,
-        metric="wae",  # Example metric, adjust as needed
-        et=0.05  # Example error tolerance, adjust as needed
+        exact_path=exact_verilog_path,
+        approx_path=approximate_verilog_path,
+        input_order=input_order,
+        output_order=output_order,
+        metric=metric,
+        # et=error_tolerance
     )
 
-    # Access synthesized file paths and perform checks
-    print("Synthesis for exact circuit path:", checker.exact)
-    print("Synthesis for approximate circuit path:", checker.approximate)
+    # Perform the check
 
-    # Perform the check (Placeholder, as `check` method is not fully implemented)
-    try:
-        result = checker.check()
-        print("Check result:", result)
-    except NotImplementedError:
-        print("Check method is not implemented yet.")
+    error, flag = checker.check()
+    print(f'{error}, {flag}')
 
 
+    print(Checker.Check(
+        exact_path=exact_verilog_path,
+        approx_path=approximate_verilog_path,
+        input_order=input_order,
+        output_order=output_order,
+        metric=metric,
+        # et=error_tolerance
+    ))
 if __name__ == '__main__':
     main()

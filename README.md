@@ -107,7 +107,7 @@ The exact circuit is located in `./input/exact/` directory and its name is `adde
 
 
 ```bash
-$ python3 checker.py -i  input/test/adder_i4_o3_wce1.v -i input/exact/adder_i4_o3.v -ipo 21 -opo 21 -et 1 -t wae --check
+$ python3 checker_blahBlah.py -i  input/test/adder_i4_o3_wce1.v -i input/exact/adder_i4_o3.v -ipo 21 -opo 21 -et 1 -t wae --check
 ```
 
 Upon running this command, you should get the following output:
@@ -143,7 +143,7 @@ In this example, we will compute the error between two Verilog circuits using th
 Here's the command to run the verifier in evaluate mode:
 
 ```bash
-$ python3 checker.py -i input/test/adder_i4_o3_wce2.v -i input/exact/adder_i4_o3.v -ipo 12 -opo 12 -t msed --evaluate
+$ python3 checker_blahBlah.py -i input/test/adder_i4_o3_wce2.v -i input/exact/adder_i4_o3.v -ipo 12 -opo 12 -t msed --evaluate
 ```
 
 Upon running this command, the output might look like:
