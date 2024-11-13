@@ -185,18 +185,11 @@ class Checker:
         print(Fore.BLUE + f'[I]: running testbench {testbench_path}')
         iv_output_path = os.path.join(self.temp_dir, "temp.iv")
         iverilog_log_path = os.path.join(self.temp_dir, "iverilog_log.txt")
-        #
-        # print("Running testbench with the following paths:")
-        # print(f"Testbench path: {testbench_path}")
-        # print(f"DUT path: {dut_path}")
-        # print(f"IV output path: {iv_output_path}")
-        # print(f"Icarus Verilog log path: {iverilog_log_path}")
-        # print(f"Result path: {result_path}")
 
         if not os.path.exists(dut_path):
-            print(f"Error: DUT file {dut_path} does not exist.")
+            print(Fore.RED + f"[E]: DUT file {dut_path} does not exist.")
         if not os.path.exists(testbench_path):
-            print(f"Error: Testbench file {testbench_path} does not exist.")
+            print(Fore.RED + f"[E]: testbench file {testbench_path} does not exist.")
 
         iverilog_command = f'iverilog -o {iv_output_path} {dut_path} {testbench_path}'
 
@@ -204,7 +197,7 @@ class Checker:
             subprocess.call(iverilog_command, shell=True, stdout=f)
 
         if not os.path.exists(iv_output_path):
-            print(f"Error: IV output file {iv_output_path} was not created.")
+            print(Fore.RED + f"[E]: iv output file {iv_output_path} was not created.")
             return
 
         with open(result_path, 'w') as f:
@@ -226,7 +219,7 @@ class Checker:
         elif self.metric == "nmed":
             return self.mred(result1, result2)
         else:
-            raise ValueError("Unknown metric type")
+            raise ValueError(Fore.RED + "[E]: unknown metric type")
 
     def wae(self, result1: List[str], result2: List[str]) -> int:
         """Calculates the Worst-Absolute Error (WAE) between two result sets."""
