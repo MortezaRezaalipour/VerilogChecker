@@ -38,8 +38,6 @@ class Checker:
         self.circuit2.input_order = input_order[1]
         self.circuit1.output_order = output_order[0]
         self.circuit2.output_order = output_order[1]
-        print(f'{input_order}')
-        print(f'{output_order}')
         self.sample_count = sample_count if sample_count else 100
 
         self.metric = metric
