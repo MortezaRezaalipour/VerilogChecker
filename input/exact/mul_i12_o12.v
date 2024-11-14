@@ -1,8 +1,6 @@
-module mul_i12_o12 (a, b, r);
-input [5:0] a, b;
-output [11:0] r;
-
-
-assign r = a * b;
-
-endmodule 
+module top (a, b, c);
+input [5:0]a;
+input [5:0]b;
+output [11:0]c;
+assign c = a * b;
+endmodule

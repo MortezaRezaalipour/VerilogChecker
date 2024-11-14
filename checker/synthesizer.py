@@ -24,7 +24,7 @@ class Synthesizer:
         Raises:
             Exception: If Yosys encounters an error during synthesis.
         """
-        print(Fore.BLUE + f'[I: synthesizing {input_path}]')
+        print(Fore.BLUE + f'[I]: synthesizing {input_path}')
         self.verilog_processor._fix_module_name(input_path)
 
         # Create a temporary file to store the synthesized output
@@ -67,7 +67,6 @@ class Synthesizer:
 
         # Rename variables in the synthesized output
         module_name, port_list, new_input_dict, output_dict = self.verilog_processor._rename_variables(output_path, output_path)
-
         return output_path, module_name, port_list, new_input_dict, output_dict
 
     def cleanup(self, path: str) -> Optional[None]:

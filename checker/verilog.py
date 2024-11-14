@@ -28,24 +28,36 @@ class VerilogProcessor:
         fh, abs_path = mkstemp()
         with os.fdopen(fh, 'w') as new_file:
             with open(input_path) as old_file:
+                buffer = ""  # Buffer to collect multiline module declarations
+                inside_module = False  # Flag to indicate we're reading a module
+
                 for line in old_file:
                     if 'module' in line and 'endmodule' not in line:
+                        inside_module = True  # Start buffering
+                        buffer += line
 
-                        # This pattern divides the module declaration into three parts.
-                        # for example: it divides this: module \nulls9-ko23iou09vn2adder(pi0, pi1, pi2, pi3, po0, po1, po2);\n
-                        # into this:
-                        # match.group(1) <= 'module '
-                        # match.group(2) <= '\nulls9-ko23iou09vn2adder'
-                        # match.group(1) <= '(pi0, pi1, pi2, pi3, po0, po1, po2);\n'
-                        pattern = '(module )([^\(]+)(\(.*\);)'
-                        match = re.search(pattern, line)
-                        second = match.group(2)
-                        new_file.write(line.replace(second, subst))
+                    elif inside_module:
+                        buffer += line  # Keep adding lines to the buffer
+                        if ");" in line:  # Found the end of the module declaration
+                            # Apply regex to the complete buffered module declaration
+                            pattern = r'(module )([^\(]+)(\(.*?\);)'
+
+                            match = re.search(pattern, buffer, flags=re.DOTALL)
+                            if match:
+                                second = match.group(2)  # Extract the module name
+                                # Replace the module name with `subst`
+                                buffer = buffer.replace(second, subst)
+                            new_file.write(buffer)  # Write the modified buffer
+                            buffer = ""  # Reset buffer
+                            inside_module = False  # Exit module context
+
                     else:
-                        new_file.write(line)
-        copymode(input_path, abs_path)
-        os.remove(input_path)
-        move(abs_path, input_path)
+                        new_file.write(line)  # Write non-module lines as-is
+
+        # Replace the old file with the new one
+        # copymode(input_path, abs_path)
+        # os.remove(input_path)
+        # move(abs_path, input_path)
     # ====================== VARIABLE RENAMING ======================
     def _rename_variables(self, input_path: str, output_path: str):
         """
@@ -62,18 +74,21 @@ class VerilogProcessor:
         with open(f'{input_path}', 'r') as infile:
             verilog_str = infile.read()
 
-        verilog_str_tmp = verilog_str.split(';')
-        verilog_str = verilog_str.split('\n')
+        verilog_str_tmp = verilog_str
+
 
         module_name, port_list = self._extract_module_signature(verilog_str_tmp)
-        input_dict, output_dict = self._extract_inputs_outputs(verilog_str_tmp, port_list)
+
+        input_dict, output_dict = self._extract_inputs_outputs( verilog_str, port_list)
 
         new_labels = self._create_new_labels(port_list, input_dict, output_dict)
+
+
+        # verilog_str = verilog_str.split('\n')
         verilog_str = self._relabel_nodes(verilog_str, new_labels)
 
         with open(f'{output_path}', 'w') as outfile:
-            for line in verilog_str:
-                outfile.write(f'{line}\n')
+            outfile.write(f'{verilog_str}\n')
 
         new_input_dict = {}
         new_output_dict = {}
@@ -86,7 +101,8 @@ class VerilogProcessor:
             outvalue = output_dict[outkey]
             if outvalue[0] in new_labels.keys():
                 new_output_dict[outkey] = (new_labels[outvalue[0]], outvalue[1])
-
+        # if re.search('mul_i12_o12_lac0_20241113', input_path):
+        #     exit()
         # I'm just returning these because I need them later
         return module_name, port_list, new_input_dict, output_dict
 
@@ -103,56 +119,105 @@ class VerilogProcessor:
             Dict: A dictionary mapping old variable names to new labels.
         """
         new_labels: Dict = {}
-        for port_idx in input_dict:
-            if input_dict[port_idx][0] == port_list[port_idx]:
-                new_labels[port_list[port_idx]] = f'in{port_idx}'
-            else:
-                raise Exception(f'Error!!! {input_dict[port_idx][0]} is not equal to {port_list[port_idx]}')
+        for i_idx in input_dict.keys():
+            i = input_dict[i_idx][0]
+            if i in port_list:
+                p_idx = port_list.index(i)
+                new_labels[i] = f'in{p_idx}'
 
-        out_idx = 0
-        for port_idx in output_dict:
-            if output_dict[port_idx][0] == port_list[port_idx]:
-                new_labels[port_list[port_idx]] = f'out{out_idx}'
-                out_idx += 1
-            else:
-                raise Exception(f'Error!!! {output_dict[port_idx][0]} is not equal to {port_list[port_idx]}')
+        for o_idx in output_dict.keys():
+            o = output_dict[o_idx][0]
+            if o in port_list:
+                p_idx = port_list.index(o)
+                new_labels[o] = f'out{p_idx - (len(input_dict))}'
+
         return new_labels
 
-    def _relabel_nodes(self, verilog_str: List[str], new_labels: Dict):
+    def _relabel_nodes(self, verilog_str: str, new_labels: dict) -> str:
         """
-        Replaces old variable names with new labels in the Verilog code.
+        Relabels variables in a Verilog string based on new_labels mapping.
 
         Args:
-            verilog_str (List[str]): Lines of Verilog code.
-            new_labels (Dict): Dictionary mapping old names to new labels.
+            verilog_str (str): The Verilog code as a single string.
+            new_labels (dict): A dictionary mapping old variable names to new labels.
 
         Returns:
-            List[str]: Modified Verilog code with relabeled nodes.
+            str: The Verilog string with relabeled variables.
         """
-        verilog_str_tmp = verilog_str
+        # Use a regex pattern to replace all labels
+        def replace_match(match):
+            old_label = match.group(0)
+            return new_labels.get(old_label, old_label)  # Replace if found, else keep original
 
-        for line_idx, line in enumerate(verilog_str):
-            for key, value in new_labels.items():
+        # Construct a regex to match any of the keys in new_labels
+        pattern = re.compile(r'\b(?:' + '|'.join(map(re.escape, new_labels.keys())) + r')\b')
 
-                escaped_key = re.escape(key)
-                if re.search(f'{escaped_key}[,;)\s\n\r]|({escaped_key})$', line):
-                    found = re.search(f'({escaped_key})[,;)\s\r\n]|({escaped_key})$', line)
-                    middle = found.group(1)
-                    end = found.group(2)
+        # Replace all matches using the pattern
+        relabeled_verilog = pattern.sub(replace_match, verilog_str)
 
-                    s = found.span()[0]
-                    if found.group(1):
-                        e = s + len(found.group(1))
-                        line = f"{line[:s]}{value}{line[e:]}"
-                    elif found.group(2):
-                        line = f"{line[:s]}{value}"
-                    else:
-                        print(
-                            Fore.RED + f'ERROR! in (__name__): variable{key} does not belong in either of the two groups!' + Style.RESET_ALL)
-                    verilog_str_tmp[line_idx] = line
-        return verilog_str_tmp
+        return relabeled_verilog
 
-    def _extract_module_signature(self, verilog_str: List[str]):
+    # def _relabel_nodes(self, verilog_str: List[str], new_labels: Dict):
+    #     """
+    #     Replaces old variable names with new labels in the Verilog code.
+    #
+    #     Args:
+    #         verilog_str (List[str]): Lines of Verilog code.
+    #         new_labels (Dict): Dictionary mapping old names to new labels.
+    #
+    #     Returns:
+    #         List[str]: Modified Verilog code with relabeled nodes.
+    #     """
+    #     verilog_str_tmp = verilog_str
+    #     print(f'{verilog_str = }')
+    #     for line_idx, line in enumerate(verilog_str):
+    #         for key, value in new_labels.items():
+    #
+    #             escaped_key = re.escape(key)
+    #             if re.search(f'{escaped_key}[,;)\s\n\r]|({escaped_key})$', line):
+    #                 found = re.search(f'({escaped_key})[,;)\s\r\n]|({escaped_key})$', line)
+    #                 middle = found.group(1)
+    #                 end = found.group(2)
+    #
+    #                 s = found.span()[0]
+    #                 if found.group(1):
+    #                     e = s + len(found.group(1))
+    #                     line = f"{line[:s]}{value}{line[e:]}"
+    #                 elif found.group(2):
+    #                     line = f"{line[:s]}{value}"
+    #                 else:
+    #                     print(
+    #                         Fore.RED + f'ERROR! in (__name__): variable{key} does not belong in either of the two groups!' + Style.RESET_ALL)
+    #                 verilog_str_tmp[line_idx] = line
+    #     return verilog_str_tmp
+    def _buffer_signature(self, verilog_str: str) -> str:
+        """
+        Buffers content from 'module' to the first ');' in the Verilog code string.
+
+        Args:
+            verilog_code (str): Verilog code as a single string.
+
+        Returns:
+            str: The complete module declaration as a single string.
+        """
+        buffer = ""  # To accumulate lines
+        inside_module = False  # Flag to detect when we're inside the module declaration
+
+        for line in verilog_str.splitlines():  # Split the single string into lines
+            line = line.strip()  # Remove leading and trailing spaces
+
+            # Check if the line starts with 'module' (beginning of the declaration)
+            if line.startswith("module"):
+                inside_module = True  # Start buffering
+                buffer += line + " "  # Add the line to the buffer
+            elif inside_module:
+                buffer += line + " "  # Continue buffering
+                if ");" in line:  # Check if the module declaration ends
+                    break  # Exit the loop once the module declaration is complete
+
+        return buffer.strip()
+
+    def _extract_module_signature(self, verilog_str: str) -> Tuple[str, List[str]]:
         """
         Extracts the module name and port list from the Verilog file.
 
@@ -162,83 +227,133 @@ class VerilogProcessor:
         Returns:
             Tuple[str, List[str]]: The module name and list of port names.
         """
-        module_name = None
-        port_list = None
+        module_name = ''
+        port_list = []
+        buffer = self._buffer_signature(verilog_str)
 
-        for line in verilog_str:
-            line = line.strip()  # remove whitespaces at the beginning or end of the line
+        match = re.match(r'^module\s+([\w\\]+)\s*\(', buffer)
+        if match:
+            module_name = match.group(1)  # Group 1 captures the module name
+        else:
+            raise ValueError(Fore.RED + "Failed to extract module name. Invalid module declaration.")
 
-            if re.search('module', line) and not re.search('endmodule', line):
-                # extract module
-
-                match_object = re.search('module (\w+)', line)  # module adder(a, b, c)
-                module_name = match_object.group(1)  # adder
-
-                # extract port list
-
-                line = line.split(module_name)[1].replace("\n", "").strip()
-
-                match_object = re.search('\((.+)\)', line)  # module adder(a, b, c)
-
-                ports_str = match_object.group(1)  # a, b, c
-
-                port_list = ports_str.strip().replace(" ", "").split(',')
-        assert module_name and port_list, f'Either module_name or port_list is None'
+        match = re.search(r'\((.*)\);', buffer, flags=re.DOTALL)
+        if match:
+            ports_str = match.group(1)  # Extract the content inside parentheses
+            # Split ports by comma and remove leading/trailing whitespace
+            port_list = [port.strip() for port in ports_str.split(',') if port.strip()]
+        else:
+            raise ValueError(Fore.RED + "Failed to extract port list. Invalid module declaration.")
         return module_name, port_list
 
-    def _extract_inputs_outputs(self, verilog_str: List[str], port_list: List[str]):
+    def _extract_inputs_outputs(self, verilog_str, port_list):
         """
-        Extracts inputs and outputs from the Verilog code.
+        Extracts inputs and outputs from the Verilog code based on the port list.
 
         Args:
-            verilog_str (List[str]): Lines of Verilog code.
-            port_list (List[str]): List of ports in the module.
+            verilog_str (Union[str, List[str]]): Verilog code as a string or list of lines.
+            port_list (List[str]): List of module ports.
 
         Returns:
-            Tuple[Dict[int, Tuple[str, int]], Dict[int, Tuple[str, int]]]: Dictionaries for input and output ports.
+            Tuple[Dict[str, str], Dict[str, str]]: Input and output dictionaries.
         """
-        input_dict: Dict[int:(str, int)] = {}
-        output_dict: Dict[int:(str, int)] = {}
-        # example:
-        # for module circuit(a, b, c, d)
-        # input [1:0] a;
-        # input [2:0]b;
-        # output d;
-        # output [3:0]c;
-        # example input_dict = {0:(a, 2), 1:(b, 3)}
-        # example input_dict = {3:(d, 1), 2:(c, 3)}
+        # Ensure verilog_str is a string
+        if isinstance(verilog_str, list):
+            verilog_str = " ".join(line.strip() for line in verilog_str)
 
-        for line in verilog_str:
-            line = line.strip()  # remove all whitespaces at the beginning or end of the line
-            # extract inputs
-            if line.startswith('input'):
-                match_obj = re.search('input (.+)', line)  # input a, b, c; or input [1:0] a;
-                cur_input_str = match_obj.group(1)  # a, b, c or [1:0] a
-                cur_input_list = cur_input_str.strip().replace(" ", "").split(',')  # ['a', 'b', 'c'] or ['[1:0]a']
-                cur_input_list = self._check_multi_vector_declaration(cur_input_list)
-                for inp in cur_input_list:
 
-                    if self._get_name(inp) in port_list:
-                        position_in_module_signature = port_list.index(self._get_name(inp))
-                        input_dict[position_in_module_signature] = (self._get_name(inp), self._get_width(inp))
-                    else:
+        # Extract input and output declarations
+        input_decl = re.findall(r'input\s+([^;]+);', verilog_str)
+        output_decl = re.findall(r'output\s+([^;]+);', verilog_str)
 
-                        raise Exception(f"input name {self._get_name(inp)} is not in the port_list {port_list}")
-            # extract outputs
-            if line.startswith('output'):
-                match_obj = re.search('output (.+)', line)  # input a, b, c; or input [1:0] a;
-                cur_output_str = match_obj.group(1)  # a, b, c or [1:0] a
-                cur_output_list = cur_output_str.strip().replace(" ", "").split(',')  # ['a', 'b', 'c'] or ['[1:0]a']
-                cur_output_list = self._check_multi_vector_declaration(cur_output_list)
-                for out in cur_output_list:
-                    if self._get_name(out) in port_list:
-                        position_in_module_signature = port_list.index(self._get_name(out))
-                        output_dict[position_in_module_signature] = (self._get_name(out), self._get_width(out))
-                    else:
-                        raise Exception(f"output name {self._get_name(out)} is not in the port_list")
-            sorted_input_dict = OrderedDict(sorted(input_dict.items()))
-            sorted_output_dict = OrderedDict(sorted(output_dict.items()))
+
+
+        # Process declarations into individual ports
+        input_ports = []
+        for decl in input_decl:
+            split_ports = [port.strip() for port in re.split(r'[,\s]+', decl) if port.strip()]
+            input_ports.extend(split_ports)
+
+        output_ports = []
+        for decl in output_decl:
+            split_ports = [port.strip() for port in re.split(r'[,\s]+', decl) if port.strip()]
+            output_ports.extend(split_ports)
+
+
+        # convert them into dictionary
+        port_dict = {}
+
+        for p_idx, p in enumerate(port_list):
+            port_dict[p] = p_idx
+
+
+        input_dict = {}
+        for i_idx, i in enumerate(input_ports):
+            if i in port_dict:
+                input_dict[port_dict[i]] = (i, 1)
+
+        output_dict = {}
+        for o_idx, o in enumerate(output_ports):
+            if o in port_dict:
+                output_dict[port_dict[o]] = (o, 1)
+
+
+
         return input_dict, output_dict
+
+    # def _extract_inputs_outputs(self, verilog_str: List[str], port_list: List[str]):
+    #     """
+    #     Extracts inputs and outputs from the Verilog code.
+    #
+    #     Args:
+    #         verilog_str (List[str]): Lines of Verilog code.
+    #         port_list (List[str]): List of ports in the module.
+    #
+    #     Returns:
+    #         Tuple[Dict[int, Tuple[str, int]], Dict[int, Tuple[str, int]]]: Dictionaries for input and output ports.
+    #     """
+    #     input_dict: Dict[int:(str, int)] = {}
+    #     output_dict: Dict[int:(str, int)] = {}
+    #     # example:
+    #     # for module circuit(a, b, c, d)
+    #     # input [1:0] a;
+    #     # input [2:0]b;
+    #     # output d;
+    #     # output [3:0]c;
+    #     # example input_dict = {0:(a, 2), 1:(b, 3)}
+    #     # example input_dict = {3:(d, 1), 2:(c, 3)}
+    #
+    #     for line in verilog_str:
+    #         line = line.strip()  # remove all whitespaces at the beginning or end of the line
+    #         # extract inputs
+    #         if line.startswith('input'):
+    #             match_obj = re.search('input (.+)', line)  # input a, b, c; or input [1:0] a;
+    #             cur_input_str = match_obj.group(1)  # a, b, c or [1:0] a
+    #             cur_input_list = cur_input_str.strip().replace(" ", "").split(',')  # ['a', 'b', 'c'] or ['[1:0]a']
+    #             cur_input_list = self._check_multi_vector_declaration(cur_input_list)
+    #             for inp in cur_input_list:
+    #
+    #                 if self._get_name(inp) in port_list:
+    #                     position_in_module_signature = port_list.index(self._get_name(inp))
+    #                     input_dict[position_in_module_signature] = (self._get_name(inp), self._get_width(inp))
+    #                 else:
+    #
+    #                     raise Exception(f"input name {self._get_name(inp)} is not in the port_list {port_list}")
+    #         # extract outputs
+    #         if line.startswith('output'):
+    #             match_obj = re.search('output (.+)', line)  # input a, b, c; or input [1:0] a;
+    #             cur_output_str = match_obj.group(1)  # a, b, c or [1:0] a
+    #             cur_output_list = cur_output_str.strip().replace(" ", "").split(',')  # ['a', 'b', 'c'] or ['[1:0]a']
+    #             cur_output_list = self._check_multi_vector_declaration(cur_output_list)
+    #             for out in cur_output_list:
+    #                 if self._get_name(out) in port_list:
+    #                     position_in_module_signature = port_list.index(self._get_name(out))
+    #                     output_dict[position_in_module_signature] = (self._get_name(out), self._get_width(out))
+    #                 else:
+    #                     raise Exception(f"output name {self._get_name(out)} is not in the port_list")
+    #         sorted_input_dict = OrderedDict(sorted(input_dict.items()))
+    #         sorted_output_dict = OrderedDict(sorted(output_dict.items()))
+    #     return input_dict, output_dict
 
     def _check_multi_vector_declaration(self, cur_list: List[str]) -> List[str]:
         """
