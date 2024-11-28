@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="verilogChecker",  # Replace with your package name
-    version="1.0.1",
+    version="1.0.3",
     author="Morteza Rezaalipour",
     author_email="morteza.rezaalipour@usi.ch",
     description="A tool for synthesizing and evaluating Verilog circuits.",

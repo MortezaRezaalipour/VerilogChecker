@@ -92,7 +92,7 @@ class Checker:
 
     def simulate(self, circuit: Circuit):
         """Simulates a circuit by creating and running a testbench."""
-        print(Fore.BLUE + f'[I]: simulating started..')
+        # print(Fore.BLUE + f'[I]: simulating started..')
         testbench = self.create_testbench(circuit, circuit.simulation_pattern)
         circuit.testbench_path = os.path.join(self.temp_dir, f'{circuit.name}_tb.v')
         self.export_testbench(circuit.testbench_path, testbench)
@@ -124,13 +124,14 @@ class Checker:
                  metric: Literal["wae", "nmed", "med", "er"],
                  et: Union[float, int]  = float('inf'),
                  sample_count: int = 100):
-        checker_obj = cls(exact_path, approx_path, input_order, output_order, metric, et)
+        checker_obj = cls(exact_path, approx_path, input_order, output_order, metric, et, sample_count)
         return checker_obj.check()
 
     def generate_samples(self, sample_count: int) -> List[int]:
         """Generates simulation patterns based on the input count."""
-        print(Fore.BLUE + f'[I]: generating {sample_count} random samples...')
-        return list(range(sample_count))
+        # print(Fore.BLUE + f'[I]: generating {sample_count} random samples...')
+        max_value = 2 ** self.circuit1.input_count - 1
+        return [random.randint(0, max_value) for _ in range(sample_count)]
 
     def import_results(self, circuit: Circuit):
         """Imports simulation results from the result path."""
@@ -141,7 +142,7 @@ class Checker:
         """Creates a testbench for a circuit."""
         module_signature = f'module {circuit.name}_tb;\n'
         input_dec = f'reg [{circuit.input_count - 1}:0] pi;\n'
-        output_dec = f'wire [{circuit.output_count - 1}:0] po;\n'
+        output_dec = f'wire [{circuit.output_count} - 1:0] po;\n'
         inst_dut = self.instantiate_dut(circuit)
         mapped_samples = f'initial\nbegin\n' + ''.join(
             self.integer_to_binary(circuit, sample) for sample in samples) + 'end\nendmodule\n'
@@ -149,6 +150,7 @@ class Checker:
 
     def instantiate_dut(self, circuit: Circuit) -> str:
         """Instantiates the DUT for a testbench."""
+
         dut_inst = f'{circuit.name} dut ('
         dut_inst += ', '.join(
             f'pi[{i}]' for i in range(circuit.input_count)) if circuit.input_order == INPUT_ORDER_TYPE1 else ', '.join(
@@ -182,7 +184,7 @@ class Checker:
 
     def run_testbench(self, testbench_path: str, dut_path: str, result_path: str):
         """Runs the testbench for a synthesized circuit using iverilog and vvp."""
-        print(Fore.BLUE + f'[I]: running testbench {testbench_path}')
+        # print(Fore.BLUE + f'[I]: running testbench {testbench_path}')
         iv_output_path = os.path.join(self.temp_dir, "temp.iv")
         iverilog_log_path = os.path.join(self.temp_dir, "iverilog_log.txt")
 
@@ -197,7 +199,7 @@ class Checker:
             subprocess.call(iverilog_command, shell=True, stdout=f)
 
         if not os.path.exists(iv_output_path):
-            print(Fore.RED + f"[E]: iv output file {iv_output_path} was not created.")
+            # print(Fore.RED + f"[E]: iv output file {iv_output_path} was not created.")
             return
 
         with open(result_path, 'w') as f:

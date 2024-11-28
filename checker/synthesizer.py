@@ -24,10 +24,10 @@ class Synthesizer:
         Raises:
             Exception: If Yosys encounters an error during synthesis.
         """
-        print(Fore.BLUE + f'[I]: synthesizing {input_path}')
+        # print(Fore.BLUE + f'[I]: synthesizing {input_path}')
         self.verilog_processor._fix_module_name(input_path)
 
-        # Create a temporary file to store the synthesized output
+        # Create a temporary file to sto7.re the synthesized output
         # temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".v")
         # Yosys synthesis command
         yosys_command = f"""

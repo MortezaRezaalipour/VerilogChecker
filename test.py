@@ -12,8 +12,8 @@ def test():
         approx_path = approx_path,
         input_order= ['1', '1'],
         output_order= ['1', '1'],
-        metric='wae',
-        et = int(wce)
+        metric='med',
+        sample_count = 100
 
     )
 

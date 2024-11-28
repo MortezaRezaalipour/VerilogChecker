@@ -237,7 +237,7 @@ class VerilogProcessor:
         else:
             raise ValueError(Fore.RED + "Failed to extract module name. Invalid module declaration.")
 
-        match = re.search(r'\((.*)\);', buffer, flags=re.DOTALL)
+        match = re.search(r'\(([^)]*)\)\s*;', buffer, flags=re.DOTALL)
         if match:
             ports_str = match.group(1)  # Extract the content inside parentheses
             # Split ports by comma and remove leading/trailing whitespace
@@ -286,7 +286,6 @@ class VerilogProcessor:
         for p_idx, p in enumerate(port_list):
             port_dict[p] = p_idx
 
-
         input_dict = {}
         for i_idx, i in enumerate(input_ports):
             if i in port_dict:
@@ -295,8 +294,8 @@ class VerilogProcessor:
         output_dict = {}
         for o_idx, o in enumerate(output_ports):
             if o in port_dict:
-                output_dict[port_dict[o]] = (o, 1)
 
+                output_dict[port_dict[o]] = (o, 1)
 
 
         return input_dict, output_dict
